@@ -1,0 +1,35 @@
+# Virtual environments
+venv/
+.venv/
+
+# Training data (downloaded by setup.sh)
+openwakeword_features_ACAV100M_2000_hrs_16bit.npy
+validation_set_features.npy
+audioset/
+audioset_16k/
+fma/
+mit_rirs/
+MIT_environmental_impulse_responses/
+
+# Cloned repos (downloaded by setup.sh)
+openwakeword/
+piper-sample-generator/
+
+# Generated training outputs
+my_custom_model/
+training_config.yaml
+
+# User recordings
+my_real_samples/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
