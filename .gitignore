@@ -2,7 +2,8 @@
 venv/
 .venv/
 
-# Training data (downloaded by setup.sh)
+# Training data (downloaded by setup.sh / setup-data.sh)
+data/
 openwakeword_features_ACAV100M_2000_hrs_16bit.npy
 validation_set_features.npy
 audioset/

@@ -12,42 +12,34 @@ Train custom wake word models for [OpenWakeWord](https://github.com/dscripka/ope
 
 ## Requirements
 
-- **Python 3.10+**
 - **NVIDIA GPU** with CUDA (RTX 3060 12GB or better recommended)
+- **Docker** with [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 - **~20GB disk space** for training data
-- **Docker** (for Kokoro TTS)
 
-## Quick Start
+## Quick Start (Docker)
 
-### 1. Clone and Setup
+Docker is the recommended approach - it handles all the dependency hell for you.
+
+### 1. Clone
 
 ```bash
-git clone https://github.com/CoreWorxLab/openwakeword-trainer.git
-cd openwakeword-trainer
-./setup.sh
+git clone https://github.com/CoreWorxLab/openwakeword-training.git
+cd openwakeword-training
 ```
 
-This downloads ~17GB of training data and sets up the environment. Takes 30-60 minutes depending on your connection.
-
-### 2. Start Kokoro TTS
-
-Kokoro provides diverse synthetic voices for training data:
+### 2. Download Training Data (~17GB, one-time)
 
 ```bash
-docker run -d --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest
-```
-
-Verify it's running:
-```bash
-curl http://localhost:8880/v1/audio/voices
+docker compose build trainer
+docker compose run --rm trainer ./setup-data.sh
 ```
 
 ### 3. Record Your Voice (Optional but Recommended)
 
-Recording 20-50 samples of your actual voice significantly improves detection:
+Recording 20-50 samples of your actual voice significantly improves detection. This runs on your host machine (needs microphone access):
 
 ```bash
-source venv/bin/activate
+pip install pyaudio numpy scipy
 python record_samples.py --wake-word "hey cal"
 ```
 
@@ -59,23 +51,23 @@ python record_samples.py --wake-word "hey cal"
 ### 4. Train Your Model
 
 ```bash
-source venv/bin/activate
-python train.py --wake-word "hey cal"
+docker compose run --rm trainer python train.py --wake-word "hey cal" --data-dir /app/data
 ```
 
 Training takes 4-8 hours depending on GPU.
 
 ### 5. Test Your Model
 
+Test on your host machine (needs microphone access):
+
 ```bash
+pip install openwakeword pyaudio numpy
 python test_model.py --model my_custom_model/hey_cal.onnx
 ```
 
 Speak your wake word into the microphone and watch for detections.
 
 ## Configuration
-
-Edit `train.py` or pass command-line arguments:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -84,6 +76,7 @@ Edit `train.py` or pass command-line arguments:
 | `--training-steps` | 50000 | More steps = better but slower |
 | `--layer-size` | 64 | Network size (32, 64, or 128) |
 | `--kokoro-url` | http://localhost:8880 | Kokoro TTS endpoint |
+| `--data-dir` | `.` | Training data directory (`/app/data` for Docker) |
 
 ## How It Works
 
@@ -123,6 +116,22 @@ prediction = model.predict(audio_frame)
 if prediction["hey_cal"] > 0.5:
     print("Wake word detected!")
 ```
+
+## Manual Setup (No Docker)
+
+If you prefer not to use Docker, you can set up the environment directly:
+
+```bash
+./setup.sh
+source venv/bin/activate
+
+# Start Kokoro TTS separately
+docker run -d --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest
+
+python train.py --wake-word "hey cal"
+```
+
+Note: This requires Python 3.10+ and working CUDA. The pinned dependency versions in `requirements.txt` can conflict with other Python packages on your system, which is why Docker is recommended.
 
 ## Troubleshooting
 

@@ -5,6 +5,9 @@ Train OpenWakeWord model using Kokoro TTS synthetic voices + real recordings.
 Usage:
     python train.py --wake-word "hey cal"
     python train.py --wake-word "okay jarvis" --samples-per-voice 300 --training-steps 75000
+
+Docker:
+    docker compose run --rm trainer python train.py --wake-word "hey cal" --data-dir /app/data
 """
 
 import argparse
@@ -151,7 +154,8 @@ def setup_training_dirs(wake_word: str) -> Path:
     return base_dir
 
 
-def create_config(wake_word: str, n_samples: int, training_steps: int, layer_size: int):
+def create_config(wake_word: str, n_samples: int, training_steps: int,
+                  layer_size: int, data_dir: str):
     """Create training configuration."""
     safe_name = wake_word.replace(" ", "_").lower()
 
@@ -171,9 +175,10 @@ def create_config(wake_word: str, n_samples: int, training_steps: int, layer_siz
     config["target_false_positives_per_hour"] = 0.1
     config["output_dir"] = "./my_custom_model"
     config["max_negative_weight"] = 2000
-    config["background_paths"] = ['./audioset_16k', './fma']
-    config["false_positive_validation_data_path"] = "validation_set_features.npy"
-    config["feature_data_files"] = {"ACAV100M_sample": "openwakeword_features_ACAV100M_2000_hrs_16bit.npy"}
+    config["rir_paths"] = [f'{data_dir}/mit_rirs']
+    config["background_paths"] = [f'{data_dir}/audioset_16k', f'{data_dir}/fma']
+    config["false_positive_validation_data_path"] = f"{data_dir}/validation_set_features.npy"
+    config["feature_data_files"] = {"ACAV100M_sample": f"{data_dir}/openwakeword_features_ACAV100M_2000_hrs_16bit.npy"}
 
     config_path = WORK_DIR / "training_config.yaml"
     with open(config_path, 'w') as f:
@@ -218,7 +223,9 @@ def main():
     parser.add_argument("--samples-per-voice", type=int, default=200, help="Samples per Kokoro voice")
     parser.add_argument("--training-steps", type=int, default=50000, help="Number of training steps")
     parser.add_argument("--layer-size", type=int, default=64, choices=[32, 64, 128], help="Network layer size")
-    parser.add_argument("--kokoro-url", default="http://localhost:8880", help="Kokoro TTS URL")
+    parser.add_argument("--kokoro-url", default=os.environ.get("KOKORO_URL", "http://localhost:8880"),
+                        help="Kokoro TTS URL")
+    parser.add_argument("--data-dir", default=".", help="Directory containing training data (features, audioset, fma, mit_rirs)")
     args = parser.parse_args()
 
     wake_word = args.wake_word
@@ -303,7 +310,7 @@ def main():
     print("=" * 60)
 
     # Create config and run training
-    create_config(wake_word, n_pos_train, args.training_steps, args.layer_size)
+    create_config(wake_word, n_pos_train, args.training_steps, args.layer_size, args.data_dir)
     run_augmentation()
     run_training()
 

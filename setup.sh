@@ -1,5 +1,7 @@
 #!/bin/bash
-# OpenWakeWord Trainer Setup
+# OpenWakeWord Trainer - Manual Setup (without Docker)
+# For the recommended Docker setup, see README.md
+#
 # Downloads dependencies and ~17GB of training data
 
 set -e
