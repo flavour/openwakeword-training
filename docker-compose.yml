@@ -3,6 +3,12 @@ services:
     image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
     ports:
       - "8880:8880"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8880/v1/audio/voices"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
     deploy:
       resources:
         reservations:
@@ -26,4 +32,5 @@ services:
     environment:
       - KOKORO_URL=http://kokoro:8880
     depends_on:
-      - kokoro
+      kokoro:
+        condition: service_healthy
