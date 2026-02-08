@@ -21,9 +21,8 @@ services:
               count: all
               capabilities: [gpu]
     volumes:
+      - .:/app
       - ./data:/app/data
-      - ./my_real_samples:/app/my_real_samples
-      - ./my_custom_model:/app/my_custom_model
     environment:
       - KOKORO_URL=http://kokoro:8880
     depends_on:
