@@ -8,6 +8,7 @@
 set -e
 
 DATA_DIR="${DATA_DIR:-/app/data}"
+MLFLOW_URL="${MLFLOW_URL:-https://mlflow.frangent.org}"
 
 echo "============================================"
 echo "  Freyja Wakeword Training - All Candidates"
@@ -32,7 +33,9 @@ for WORD in "freyja" "hey freyja" "okay freyja"; do
         --samples-per-voice 200 \
         --training-steps 50000 \
         --layer-size 64 \
-        --data-dir "$DATA_DIR"
+        --data-dir "$DATA_DIR" \
+        --mlflow-url "$MLFLOW_URL" \
+        --mlflow-experiment "openwakeword"
 
     echo ""
     echo "  Finished $WORD at $(date)"

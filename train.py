@@ -12,6 +12,7 @@ Docker:
 
 import argparse
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -26,6 +27,13 @@ import requests
 import scipy.io.wavfile
 import yaml
 from tqdm import tqdm
+
+# Optional MLflow support
+try:
+    import mlflow
+    HAS_MLFLOW = True
+except ImportError:
+    HAS_MLFLOW = False
 
 warnings.filterwarnings("ignore", message="Reached EOF prematurely")
 
@@ -226,6 +234,8 @@ def main():
     parser.add_argument("--kokoro-url", default=os.environ.get("KOKORO_URL", "http://localhost:8880"),
                         help="Kokoro TTS URL")
     parser.add_argument("--data-dir", default=".", help="Directory containing training data (features, audioset, fma, mit_rirs)")
+    parser.add_argument("--mlflow-url", default=os.environ.get("MLFLOW_URL"), help="MLflow tracking server URL")
+    parser.add_argument("--mlflow-experiment", default="openwakeword", help="MLflow experiment name")
     args = parser.parse_args()
 
     wake_word = args.wake_word
@@ -310,9 +320,32 @@ def main():
     print("=" * 60)
 
     # Create config and run training
-    create_config(wake_word, n_pos_train, args.training_steps, args.layer_size, args.data_dir)
+    config = create_config(wake_word, n_pos_train, args.training_steps, args.layer_size, args.data_dir)
+
+    # MLflow setup
+    mlflow_active = False
+    if args.mlflow_url and HAS_MLFLOW:
+        mlflow.set_tracking_uri(args.mlflow_url)
+        mlflow.set_experiment(args.mlflow_experiment)
+        mlflow.start_run(run_name=f"{safe_name}-{args.training_steps}steps")
+        mlflow.log_params({
+            "wake_word": wake_word,
+            "samples_per_voice": args.samples_per_voice,
+            "training_steps": args.training_steps,
+            "layer_size": args.layer_size,
+            "n_pos_train": n_pos_train,
+            "n_pos_test": n_pos_test,
+            "n_neg_train": n_neg_train,
+            "n_neg_test": n_neg_test,
+            "n_kokoro_voices": len(kokoro_voices),
+        })
+        mlflow_active = True
+        print(f"MLflow tracking: {args.mlflow_url} / {args.mlflow_experiment}")
+    elif args.mlflow_url and not HAS_MLFLOW:
+        print("WARNING: --mlflow-url set but mlflow not installed. pip install mlflow")
+
     run_augmentation()
-    run_training()
+    exit_code = run_training()
 
     # Done
     model_path = WORK_DIR / "my_custom_model" / f"{safe_name}.onnx"
@@ -323,8 +356,30 @@ def main():
         size_kb = model_path.stat().st_size / 1024
         print(f"Model: {model_path} ({size_kb:.0f}KB)")
         print(f"\nTest with: python test_model.py --model {model_path}")
+
+        if mlflow_active:
+            mlflow.log_metric("model_size_kb", size_kb)
+            mlflow.log_artifact(str(model_path))
+            # Log any metrics files from training output
+            metrics_dir = WORK_DIR / "my_custom_model" / safe_name
+            for f in metrics_dir.glob("*.json"):
+                try:
+                    with open(f) as fh:
+                        data = json.load(fh)
+                    if isinstance(data, dict):
+                        for k, v in data.items():
+                            if isinstance(v, (int, float)):
+                                mlflow.log_metric(k, v)
+                except Exception:
+                    pass
+            mlflow.log_artifact(str(WORK_DIR / "training_config.yaml"))
     else:
         print("WARNING: Model file not found!")
+        if mlflow_active:
+            mlflow.log_metric("training_failed", 1)
+
+    if mlflow_active:
+        mlflow.end_run()
 
 
 if __name__ == "__main__":
