@@ -39,24 +39,9 @@ if [ ! -d "$DATA_DIR/mit_rirs" ]; then
     git clone https://huggingface.co/datasets/davidscripka/MIT_environmental_impulse_responses "$DATA_DIR/MIT_environmental_impulse_responses_tmp"
 
     mkdir -p "$DATA_DIR/mit_rirs"
-    python3 << EOF
-import datasets
-import scipy.io.wavfile
-import numpy as np
-from pathlib import Path
-from tqdm import tqdm
-
-rir_dataset = datasets.Dataset.from_dict({
-    "audio": [str(i) for i in Path("$DATA_DIR/MIT_environmental_impulse_responses_tmp/16khz").glob("*.wav")]
-}).cast_column("audio", datasets.Audio())
-
-for row in tqdm(rir_dataset, desc="Processing RIRs"):
-    name = row['audio']['path'].split('/')[-1]
-    scipy.io.wavfile.write(
-        "$DATA_DIR/mit_rirs/" + name, 16000,
-        (row['audio']['array'] * 32767).astype(np.int16)
-    )
-EOF
+    # Just copy the 16kHz WAVs directly — no need for datasets library
+    cp "$DATA_DIR/MIT_environmental_impulse_responses_tmp/16khz/"*.wav "$DATA_DIR/mit_rirs/"
+    echo "Copied $(ls "$DATA_DIR/mit_rirs/"*.wav | wc -l) RIR files"
     rm -rf "$DATA_DIR/MIT_environmental_impulse_responses_tmp"
 else
     echo "MIT RIRs already exist, skipping."
@@ -70,24 +55,13 @@ if [ ! -d "$DATA_DIR/audioset_16k" ]; then
         'https://huggingface.co/datasets/agkphysics/AudioSet/resolve/main/bal_train09.tar'
     tar -xf "$DATA_DIR/audioset/bal_train09.tar" -C "$DATA_DIR/audioset"
 
-    python3 << EOF
-import datasets
-import scipy.io.wavfile
-import numpy as np
-from pathlib import Path
-from tqdm import tqdm
-
-audioset = datasets.Dataset.from_dict({
-    "audio": [str(i) for i in Path("$DATA_DIR/audioset/audio").glob("**/*.flac")]
-}).cast_column("audio", datasets.Audio(sampling_rate=16000))
-
-for row in tqdm(audioset, desc="Processing AudioSet"):
-    name = row['audio']['path'].split('/')[-1].replace(".flac", ".wav")
-    scipy.io.wavfile.write(
-        "$DATA_DIR/audioset_16k/" + name, 16000,
-        (row['audio']['array'] * 32767).astype(np.int16)
-    )
-EOF
+    # Convert FLAC to 16kHz WAV using ffmpeg (no datasets dependency)
+    echo "Converting AudioSet FLAC to 16kHz WAV..."
+    for f in "$DATA_DIR/audioset/audio"/**/*.flac; do
+        name=$(basename "${f%.flac}.wav")
+        ffmpeg -y -i "$f" -ar 16000 -ac 1 "$DATA_DIR/audioset_16k/$name" -loglevel error 2>/dev/null || true
+    done
+    echo "Converted $(ls "$DATA_DIR/audioset_16k/"*.wav 2>/dev/null | wc -l) AudioSet files"
     rm -rf "$DATA_DIR/audioset"
 else
     echo "AudioSet already exists, skipping."
@@ -97,26 +71,39 @@ fi
 if [ ! -d "$DATA_DIR/fma" ]; then
     echo "Downloading FMA music samples..."
     mkdir -p "$DATA_DIR/fma"
-    python3 << EOF
-import datasets
-import scipy.io.wavfile
-import numpy as np
-from tqdm import tqdm
+    # Download FMA small subset directly and convert to 16kHz WAV
+    python3 << 'EOF'
+import os
+from huggingface_hub import hf_hub_download
+import zipfile
 
-fma = datasets.load_dataset("rudraml/fma", name="small", split="train", streaming=True)
-fma = iter(fma.cast_column("audio", datasets.Audio(sampling_rate=16000)))
+data_dir = os.environ.get("DATA_DIR", "./data")
 
-for i in tqdm(range(120), desc="Processing FMA"):
-    try:
-        row = next(fma)
-        name = row['audio']['path'].split('/')[-1].replace(".mp3", ".wav")
-        scipy.io.wavfile.write(
-            "$DATA_DIR/fma/" + name, 16000,
-            (row['audio']['array'] * 32767).astype(np.int16)
-        )
-    except StopIteration:
-        break
+# Download a small subset of FMA
+print("Downloading FMA small archive...")
+path = hf_hub_download(
+    repo_id="rudraml/fma",
+    filename="data/fma_small/000.zip",
+    repo_type="dataset",
+)
+
+# Extract mp3s
+extract_dir = f"{data_dir}/fma_tmp"
+os.makedirs(extract_dir, exist_ok=True)
+with zipfile.ZipFile(path, 'r') as z:
+    z.extractall(extract_dir)
+print(f"Extracted to {extract_dir}")
 EOF
+
+    # Convert first 120 MP3s to 16kHz WAV
+    count=0
+    for f in "$DATA_DIR/fma_tmp"/**/*.mp3; do
+        [ $count -ge 120 ] && break
+        name=$(basename "${f%.mp3}.wav")
+        ffmpeg -y -i "$f" -ar 16000 -ac 1 "$DATA_DIR/fma/$name" -loglevel error 2>/dev/null && count=$((count+1)) || true
+    done
+    echo "Converted $count FMA files to 16kHz WAV"
+    rm -rf "$DATA_DIR/fma_tmp"
 else
     echo "FMA already exists, skipping."
 fi
