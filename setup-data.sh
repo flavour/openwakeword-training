@@ -96,45 +96,31 @@ else
     echo "AudioSet already exists, skipping."
 fi
 
-# FMA music samples
+# Music background samples (MUSAN music subset - direct download, no HF dataset API)
 if [ ! -d "$DATA_DIR/fma" ]; then
-    echo "Downloading FMA music samples..."
+    echo "Downloading background music (MUSAN)..."
     mkdir -p "$DATA_DIR/fma"
-    # Download FMA small subset directly and convert to 16kHz WAV
-    python3 << 'EOF'
-import os
-from huggingface_hub import hf_hub_download
-import zipfile
 
-data_dir = os.environ.get("DATA_DIR", "./data")
+    # MUSAN is ~10GB total but we only extract the music portion (~1.5GB)
+    # Using openslr mirror which is reliable
+    curl -L -o "$DATA_DIR/musan_music.tar.gz" \
+        'https://www.openslr.org/resources/17/musan.tar.gz'
 
-# Download a small subset of FMA
-print("Downloading FMA small archive...")
-path = hf_hub_download(
-    repo_id="rudraml/fma",
-    filename="data/fma_small/000.zip",
-    repo_type="dataset",
-)
+    echo "Extracting music subset..."
+    tar -xzf "$DATA_DIR/musan_music.tar.gz" -C "$DATA_DIR" musan/music 2>/dev/null || true
 
-# Extract mp3s
-extract_dir = f"{data_dir}/fma_tmp"
-os.makedirs(extract_dir, exist_ok=True)
-with zipfile.ZipFile(path, 'r') as z:
-    z.extractall(extract_dir)
-print(f"Extracted to {extract_dir}")
-EOF
-
-    # Convert first 120 MP3s to 16kHz WAV
+    # Convert to 16kHz WAV (take up to 120 files)
     count=0
-    for f in "$DATA_DIR/fma_tmp"/**/*.mp3; do
-        [ $count -ge 120 ] && break
-        name=$(basename "${f%.mp3}.wav")
-        ffmpeg -y -i "$f" -ar 16000 -ac 1 "$DATA_DIR/fma/$name" -loglevel error 2>/dev/null && count=$((count+1)) || true
+    for f in $(find "$DATA_DIR/musan/music" -name "*.wav" -type f 2>/dev/null | head -120); do
+        name="music_$(basename "$f")"
+        if ffmpeg -y -i "$f" -ar 16000 -ac 1 "$DATA_DIR/fma/$name" -loglevel error 2>/dev/null; then
+            count=$((count+1))
+        fi
     done
-    echo "Converted $count FMA files to 16kHz WAV"
-    rm -rf "$DATA_DIR/fma_tmp"
+    echo "Converted $count music files to 16kHz WAV"
+    rm -rf "$DATA_DIR/musan" "$DATA_DIR/musan_music.tar.gz"
 else
-    echo "FMA already exists, skipping."
+    echo "Music background already exists, skipping."
 fi
 
 echo ""
