@@ -6,7 +6,7 @@ Train custom "Freyja" wakeword models on the forge VM (RTX 5070).
 
 ```bash
 # 1. Copy to forge (via sync or scp)
-cd ~/openwakeword-training
+cd ~/code/openwakeword-training
 
 # 2. Build Docker image & download training data (~17GB, one-time)
 docker compose build trainer
