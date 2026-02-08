@@ -47,22 +47,51 @@ else
     echo "MIT RIRs already exist, skipping."
 fi
 
-# AudioSet background audio
+# AudioSet background audio (parquet format on HuggingFace)
 if [ ! -d "$DATA_DIR/audioset_16k" ]; then
     echo "Downloading AudioSet background audio..."
-    mkdir -p "$DATA_DIR/audioset" "$DATA_DIR/audioset_16k"
-    curl -L -o "$DATA_DIR/audioset/bal_train09.tar" \
-        'https://huggingface.co/datasets/agkphysics/AudioSet/resolve/main/bal_train09.tar'
-    tar -xf "$DATA_DIR/audioset/bal_train09.tar" -C "$DATA_DIR/audioset"
+    mkdir -p "$DATA_DIR/audioset_16k"
 
-    # Convert FLAC to 16kHz WAV using ffmpeg (no datasets dependency)
-    echo "Converting AudioSet FLAC to 16kHz WAV..."
-    for f in "$DATA_DIR/audioset/audio"/**/*.flac; do
-        name=$(basename "${f%.flac}.wav")
-        ffmpeg -y -i "$f" -ar 16000 -ac 1 "$DATA_DIR/audioset_16k/$name" -loglevel error 2>/dev/null || true
-    done
-    echo "Converted $(ls "$DATA_DIR/audioset_16k/"*.wav 2>/dev/null | wc -l) AudioSet files"
-    rm -rf "$DATA_DIR/audioset"
+    python3 << 'PYEOF'
+import os, struct
+from pathlib import Path
+from huggingface_hub import hf_hub_download
+import pyarrow.parquet as pq
+import numpy as np
+import scipy.io.wavfile
+
+data_dir = os.environ.get("DATA_DIR", "./data")
+out_dir = Path(f"{data_dir}/audioset_16k")
+
+# Download one parquet shard (~700MB, contains ~2000 clips)
+print("Downloading AudioSet parquet shard...")
+path = hf_hub_download(
+    repo_id="agkphysics/AudioSet",
+    filename="data/bal_train/00.parquet",
+    repo_type="dataset",
+)
+
+print("Extracting audio from parquet...")
+table = pq.read_table(path, columns=["audio"])
+count = 0
+for i in range(min(len(table), 500)):  # 500 clips is plenty for background
+    try:
+        audio_struct = table.column("audio")[i].as_py()
+        audio_bytes = audio_struct["bytes"]
+        # Audio is encoded (typically FLAC) - write to temp and convert via scipy
+        tmp_path = out_dir / f"_tmp_{i}"
+        wav_path = out_dir / f"audioset_{i:04d}.wav"
+        tmp_path.write_bytes(audio_bytes)
+        # Use ffmpeg to convert to 16kHz WAV
+        os.system(f'ffmpeg -y -i "{tmp_path}" -ar 16000 -ac 1 "{wav_path}" -loglevel error 2>/dev/null')
+        tmp_path.unlink(missing_ok=True)
+        if wav_path.exists() and wav_path.stat().st_size > 1000:
+            count += 1
+    except Exception as e:
+        pass
+
+print(f"Extracted {count} AudioSet clips to 16kHz WAV")
+PYEOF
 else
     echo "AudioSet already exists, skipping."
 fi
