@@ -168,7 +168,10 @@ def create_config(wake_word: str, n_samples: int, training_steps: int,
     safe_name = wake_word.replace(" ", "_").lower()
 
     # Load default config from OpenWakeWord
-    default_path = WORK_DIR / "openwakeword/examples/custom_model.yml"
+    # Check /opt first (Docker), then local (dev)
+    default_path = Path("/opt/openwakeword/examples/custom_model.yml")
+    if not default_path.exists():
+        default_path = WORK_DIR / "openwakeword/examples/custom_model.yml"
     with open(default_path, 'r') as f:
         config = yaml.load(f.read(), yaml.Loader)
 
@@ -196,13 +199,22 @@ def create_config(wake_word: str, n_samples: int, training_steps: int,
     return config
 
 
+def _find_oww_train_script() -> str:
+    """Find the OpenWakeWord train.py script."""
+    for candidate in [Path("/opt/openwakeword/openwakeword/train.py"),
+                      WORK_DIR / "openwakeword/openwakeword/train.py"]:
+        if candidate.exists():
+            return str(candidate)
+    raise FileNotFoundError("Cannot find openwakeword train.py")
+
+
 def run_augmentation():
     """Run OpenWakeWord augmentation pipeline."""
     print("\n" + "=" * 60)
     print("Running augmentation pipeline...")
     print("=" * 60)
 
-    train_script = str(WORK_DIR / "openwakeword/openwakeword/train.py")
+    train_script = _find_oww_train_script()
     subprocess.run([
         sys.executable, train_script,
         "--training_config", "training_config.yaml",
@@ -216,7 +228,7 @@ def run_training():
     print("Training model...")
     print("=" * 60)
 
-    train_script = str(WORK_DIR / "openwakeword/openwakeword/train.py")
+    train_script = _find_oww_train_script()
     result = subprocess.run([
         sys.executable, train_script,
         "--training_config", "training_config.yaml",

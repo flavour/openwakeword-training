@@ -20,15 +20,15 @@ RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pyt
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Clone and install OpenWakeWord
-RUN git clone https://github.com/dscripka/openWakeWord openwakeword \
-    && pip install --no-cache-dir -e ./openwakeword
+# Clone and install OpenWakeWord (in /opt so volume mounts on /app don't hide it)
+RUN git clone https://github.com/dscripka/openWakeWord /opt/openwakeword \
+    && pip install --no-cache-dir -e /opt/openwakeword
 
 # Download embedding models (small, safe to bake into image)
-RUN mkdir -p openwakeword/openwakeword/resources/models \
-    && curl -L -o openwakeword/openwakeword/resources/models/embedding_model.onnx \
+RUN mkdir -p /opt/openwakeword/openwakeword/resources/models \
+    && curl -L -o /opt/openwakeword/openwakeword/resources/models/embedding_model.onnx \
         'https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx' \
-    && curl -L -o openwakeword/openwakeword/resources/models/melspectrogram.onnx \
+    && curl -L -o /opt/openwakeword/openwakeword/resources/models/melspectrogram.onnx \
         'https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx'
 
 # Copy training scripts
