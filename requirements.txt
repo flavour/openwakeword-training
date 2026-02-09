@@ -10,6 +10,7 @@ pyaudio
 
 # Training pipeline (used by OpenWakeWord's train.py)
 mutagen==1.47.0
+torchcodec
 torchinfo==1.8.0
 torchmetrics==1.2.0
 speechbrain==0.5.14
