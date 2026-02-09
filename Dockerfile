@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+FROM nvidia/cuda:12.8.1-base-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -7,14 +7,14 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y \
     python3.10 python3.10-venv python3.10-dev python3-pip \
     git git-lfs curl build-essential libsndfile1 portaudio19-dev ffmpeg \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
-    && ln -sf /usr/bin/python3.10 /usr/bin/python
+ && rm -rf /var/lib/apt/lists/* \
+ && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
+ && ln -sf /usr/bin/python3.10 /usr/bin/python
 
 WORKDIR /app
 
-# PyTorch with CUDA 12.1
-RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+# PyTorch with CUDA 12.8 (minimum version for Blackwell support)
+RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cu128
 
 # Training dependencies
 COPY requirements.txt .

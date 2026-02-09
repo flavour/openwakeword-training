@@ -1,5 +1,7 @@
 services:
   kokoro:
+    # GPU version doesn't support Blackwell
+    # This is just to generate initial synthetic data, so not too big of a killer
     image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
     ports:
       - "8880:8880"
@@ -8,7 +10,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 60
-      start_period: 120s
+      start_period: 60s
 
   trainer:
     build: .

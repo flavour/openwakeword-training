@@ -5,15 +5,18 @@ Train custom "Freyja" wakeword models on the forge VM (RTX 5070).
 ## Quick Start
 
 ```bash
-# 1. Copy to forge (via sync or scp)
+cd ~/code
+git clone git@github.com/flavour/openwakeword-training
 cd ~/code/openwakeword-training
 
-# 2. Build Docker image & download training data (~17GB, one-time)
+# 2. Build Docker image
 docker compose build trainer
+
+# 3. Download training data (~17GB, one-time)
 docker compose run --rm trainer ./setup-data.sh
 
-# 3. Train all three candidates (overnight job, 12-24h)
-docker compose run --rm trainer bash train_all.sh
+# 4. Train all three candidates (overnight job, 12-24h)
+docker compose run --rm trainer ./train_all.sh
 ```
 
 Or train one at a time:
@@ -41,7 +44,7 @@ my_custom_model/
 
 ## Testing
 
-Needs a microphone — test on laptop, not forge:
+Needs a microphone — test on laptop:
 ```bash
 pip install openwakeword pyaudio numpy
 python test_model.py --model my_custom_model/freyja.onnx
