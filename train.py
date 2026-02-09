@@ -184,6 +184,9 @@ def create_config(wake_word: str, n_samples: int, training_steps: int,
     config["target_recall"] = 0.5
     config["target_false_positives_per_hour"] = 0.1
     config["output_dir"] = str(WORK_DIR / "my_custom_model")
+    # Point piper path to a dummy so the import doesn't fail
+    # (we use Kokoro for sample generation, not Piper)
+    config["piper_sample_generator_path"] = str(WORK_DIR)
     config["max_negative_weight"] = 2000
     config["rir_paths"] = [f'{data_dir}/mit_rirs']
     config["background_paths"] = [f'{data_dir}/audioset_16k', f'{data_dir}/fma']
