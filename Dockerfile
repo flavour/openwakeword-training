@@ -22,7 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Clone and install OpenWakeWord (in /opt so volume mounts on /app don't hide it)
 RUN git clone https://github.com/dscripka/openWakeWord /opt/openwakeword \
-    && pip install --no-cache-dir -e /opt/openwakeword
+    && pip install --no-cache-dir -e /opt/openwakeword \
+    && sed -i 's/torchaudio.set_audio_backend("soundfile")/#torchaudio.set_audio_backend("soundfile")/' \
+       /usr/local/lib/python3.10/dist-packages/torch_audiomentations/utils/io.py 2>/dev/null || true
 
 # Download embedding models (small, safe to bake into image)
 RUN mkdir -p /opt/openwakeword/openwakeword/resources/models \
