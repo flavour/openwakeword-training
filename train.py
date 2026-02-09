@@ -183,7 +183,7 @@ def create_config(wake_word: str, n_samples: int, training_steps: int,
     config["target_accuracy"] = 0.7
     config["target_recall"] = 0.5
     config["target_false_positives_per_hour"] = 0.1
-    config["output_dir"] = "./my_custom_model"
+    config["output_dir"] = str(WORK_DIR / "my_custom_model")
     config["max_negative_weight"] = 2000
     config["rir_paths"] = [f'{data_dir}/mit_rirs']
     config["background_paths"] = [f'{data_dir}/audioset_16k', f'{data_dir}/fma']
@@ -198,13 +198,12 @@ def create_config(wake_word: str, n_samples: int, training_steps: int,
     return config
 
 
-def _find_oww_train_script() -> str:
-    """Find the OpenWakeWord train.py script."""
-    for candidate in [Path("/opt/openwakeword/openwakeword/train.py"),
-                      WORK_DIR / "openwakeword/openwakeword/train.py"]:
-        if candidate.exists():
-            return str(candidate)
-    raise FileNotFoundError("Cannot find openwakeword train.py")
+def _find_oww_dir() -> Path:
+    """Find the OpenWakeWord installation directory."""
+    for candidate in [Path("/opt/openwakeword"), WORK_DIR / "openwakeword"]:
+        if (candidate / "openwakeword" / "train.py").exists():
+            return candidate
+    raise FileNotFoundError("Cannot find openwakeword installation")
 
 
 def run_augmentation():
@@ -213,12 +212,14 @@ def run_augmentation():
     print("Running augmentation pipeline...")
     print("=" * 60)
 
-    train_script = _find_oww_train_script()
+    oww_dir = _find_oww_dir()
+    train_script = str(oww_dir / "openwakeword" / "train.py")
+    config_path = str((WORK_DIR / "training_config.yaml").resolve())
     subprocess.run([
         sys.executable, train_script,
-        "--training_config", "training_config.yaml",
+        "--training_config", config_path,
         "--augment_clips"
-    ], check=True)
+    ], cwd=str(oww_dir), check=True)
 
 
 def run_training():
@@ -227,12 +228,14 @@ def run_training():
     print("Training model...")
     print("=" * 60)
 
-    train_script = _find_oww_train_script()
+    oww_dir = _find_oww_dir()
+    train_script = str(oww_dir / "openwakeword" / "train.py")
+    config_path = str((WORK_DIR / "training_config.yaml").resolve())
     result = subprocess.run([
         sys.executable, train_script,
-        "--training_config", "training_config.yaml",
+        "--training_config", config_path,
         "--train_model"
-    ])
+    ], cwd=str(oww_dir))
     return result.returncode
 
 
