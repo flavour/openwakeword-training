@@ -146,14 +146,13 @@ def copy_real_samples(wake_word: str, output_dir: Path, copies: int = 3) -> int:
     return count
 
 
-def setup_training_dirs(wake_word: str) -> Path:
-    """Set up training directory structure."""
-    # Convert wake word to safe directory name
+def setup_training_dirs(wake_word: str, force_clean: bool = False) -> Path:
+    """Set up training directory structure. Preserves existing samples unless force_clean."""
     safe_name = wake_word.replace(" ", "_").lower()
     base_dir = WORK_DIR / "my_custom_model" / safe_name
 
-    if base_dir.exists():
-        print("Clearing previous training outputs...")
+    if force_clean and base_dir.exists():
+        print("Clearing previous training outputs (--force-clean)...")
         shutil.rmtree(base_dir)
 
     for subdir in ["positive_train", "positive_test", "negative_train", "negative_test"]:
@@ -248,6 +247,7 @@ def main():
     parser.add_argument("--data-dir", default=".", help="Directory containing training data (features, audioset, fma, mit_rirs)")
     parser.add_argument("--mlflow-url", default=os.environ.get("MLFLOW_URL"), help="MLflow tracking server URL")
     parser.add_argument("--mlflow-experiment", default="openwakeword", help="MLflow experiment name")
+    parser.add_argument("--force-clean", action="store_true", help="Delete existing samples and regenerate from scratch")
     args = parser.parse_args()
 
     wake_word = args.wake_word
@@ -268,56 +268,64 @@ def main():
         print("ERROR: No Kokoro voices available!")
         sys.exit(1)
 
-    # Setup directories
-    base_dir = setup_training_dirs(wake_word)
+    # Setup directories (preserves existing samples)
+    base_dir = setup_training_dirs(wake_word, force_clean=args.force_clean)
     pos_train = base_dir / "positive_train"
     pos_test = base_dir / "positive_test"
     neg_train = base_dir / "negative_train"
     neg_test = base_dir / "negative_test"
 
-    # Text variations for positive samples
-    positive_texts = [
-        wake_word,
-        wake_word.title(),
-        wake_word.lower(),
-        wake_word.upper(),
-        f"{wake_word}!",
-        f"{wake_word}.",
-    ]
+    # Check if samples already exist (skip expensive Kokoro generation)
+    existing_pos = len(list(pos_train.glob("*.wav")))
+    existing_neg = len(list(neg_train.glob("*.wav")))
+    min_expected = args.samples_per_voice * len(kokoro_voices) // 2  # at least half
 
-    # Negative phrases - ONLY clearly different words (not similar-sounding!)
-    # Using similar-sounding phrases hurts model performance
-    negative_phrases = [
-        "hello", "hi there", "good morning", "excuse me", "okay",
-        "hey siri", "hey google", "alexa", "hey jarvis", "computer",
-    ]
+    if existing_pos >= min_expected and existing_neg >= min_expected:
+        print(f"\n✅ Found existing samples ({existing_pos} pos, {existing_neg} neg) — skipping generation")
+        print("   Use --force-clean to regenerate from scratch")
+    else:
+        # Text variations for positive samples
+        positive_texts = [
+            wake_word,
+            wake_word.title(),
+            wake_word.lower(),
+            wake_word.upper(),
+            f"{wake_word}!",
+            f"{wake_word}.",
+        ]
 
-    # === POSITIVE SAMPLES ===
-    print("\n" + "=" * 60)
-    print("Generating POSITIVE samples...")
-    print("=" * 60)
+        # Negative phrases - ONLY clearly different words (not similar-sounding!)
+        negative_phrases = [
+            "hello", "hi there", "good morning", "excuse me", "okay",
+            "hey siri", "hey google", "alexa", "hey jarvis", "computer",
+        ]
 
-    print("\n[Kokoro TTS]")
-    generate_kokoro_samples(args.kokoro_url, kokoro_voices, pos_train,
-                           args.samples_per_voice, positive_texts, "Kokoro positive train")
-    generate_kokoro_samples(args.kokoro_url, kokoro_voices, pos_test,
-                           args.samples_per_voice // 10, positive_texts, "Kokoro positive test")
+        # === POSITIVE SAMPLES ===
+        print("\n" + "=" * 60)
+        print("Generating POSITIVE samples...")
+        print("=" * 60)
 
-    print("\n[Real Voice]")
-    real_count = copy_real_samples(wake_word, pos_train)
-    if real_count > 5:
-        copy_real_samples(wake_word, pos_test)
+        print("\n[Kokoro TTS]")
+        generate_kokoro_samples(args.kokoro_url, kokoro_voices, pos_train,
+                               args.samples_per_voice, positive_texts, "Kokoro positive train")
+        generate_kokoro_samples(args.kokoro_url, kokoro_voices, pos_test,
+                               args.samples_per_voice // 10, positive_texts, "Kokoro positive test")
 
-    # === NEGATIVE SAMPLES ===
-    print("\n" + "=" * 60)
-    print("Generating NEGATIVE samples...")
-    print("=" * 60)
+        print("\n[Real Voice]")
+        real_count = copy_real_samples(wake_word, pos_train)
+        if real_count > 5:
+            copy_real_samples(wake_word, pos_test)
 
-    print("\n[Kokoro TTS]")
-    generate_kokoro_samples(args.kokoro_url, kokoro_voices, neg_train,
-                           args.samples_per_voice, negative_phrases, "Kokoro negative train")
-    generate_kokoro_samples(args.kokoro_url, kokoro_voices, neg_test,
-                           args.samples_per_voice // 10, negative_phrases, "Kokoro negative test")
+        # === NEGATIVE SAMPLES ===
+        print("\n" + "=" * 60)
+        print("Generating NEGATIVE samples...")
+        print("=" * 60)
+
+        print("\n[Kokoro TTS]")
+        generate_kokoro_samples(args.kokoro_url, kokoro_voices, neg_train,
+                               args.samples_per_voice, negative_phrases, "Kokoro negative train")
+        generate_kokoro_samples(args.kokoro_url, kokoro_voices, neg_test,
+                               args.samples_per_voice // 10, negative_phrases, "Kokoro negative test")
 
     # === COUNT SAMPLES ===
     n_pos_train = len(list(pos_train.glob("*.wav")))
