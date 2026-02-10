@@ -294,6 +294,19 @@ def _parse_and_log_metric(line: str, sequence: int) -> None:
         _mlflow_step_counters["neg_weight_increase"] = step + 1
         return
 
+    # Parse structured METRIC: lines from patched upstream train.py
+    # Format: METRIC:key=value:step=N
+    metric_match = re.match(r"METRIC:(\w+)=([\d.e+-]+):step=(\d+)", line)
+    if metric_match:
+        key = metric_match.group(1)
+        value = float(metric_match.group(2))
+        step = int(metric_match.group(3))
+        try:
+            mlflow.log_metric(key, value, step=step)
+        except Exception:
+            pass
+        return
+
     # Parse tqdm progress: "Training: 100%|█| 49998/50000 [03:53<00:00, 282.30it/s]"
     tqdm_match = re.search(r"Training:\s+\d+%\|.*?\|\s*(\d+)/([\d.]+)", line)
     if tqdm_match:
@@ -303,24 +316,8 @@ def _parse_and_log_metric(line: str, sequence: int) -> None:
         if total > 0 and current % max(1, total // 10) < 50:
             step = _mlflow_step_counters.get("training_step", 0)
             mlflow.log_metric("training_step", current, step=step)
-            mlflow.log_metric("training_total", total, step=step)
-            mlflow.log_metric("training_pct", round(current / total * 100, 1), step=step)
             _mlflow_step_counters["training_step"] = step + 1
         return
-
-    # Match any generic "key: value" or "key=value" metric patterns from upstream logging
-    for metric_name in ["val_accuracy", "val_recall", "train_recall", "train_accuracy",
-                         "loss", "false_positive_rate", "fp_per_hour"]:
-        pattern = rf"{metric_name}[=:]\s*([\d.e+-]+)"
-        m = re.search(pattern, line, re.IGNORECASE)
-        if m:
-            step = _mlflow_step_counters.get(metric_name, 0)
-            try:
-                mlflow.log_metric(metric_name, float(m.group(1)), step=step)
-                _mlflow_step_counters[metric_name] = step + 1
-            except (ValueError, OverflowError):
-                pass
-            return
 
 
 def main():
