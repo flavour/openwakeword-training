@@ -8,7 +8,10 @@ train_path = sys.argv[1] if len(sys.argv) > 1 else "/opt/openwakeword/openwakewo
 with open(train_path) as f:
     code = f.read()
 
+# Fix: call model.eval() before ONNX export to avoid training-mode artifacts
 patches = [
+    ('torch.onnx.export(model_to_save.to("cpu"), torch.rand(self.input_shape)[None, ],',
+     'model_to_save.eval()\n        torch.onnx.export(model_to_save.to("cpu"), torch.rand(self.input_shape)[None, ],'),
     ('self.history["loss"].append(loss.detach().cpu().numpy())',
      'self.history["loss"].append(loss.detach().cpu().numpy())\n                    _m = self.history["loss"][-1]; print(f"METRIC:loss={_m}:step={step_ndx}", flush=True)'),
     ('self.history["recall"].append(self.recall(accumulated_predictions, accumulated_labels).detach().cpu().numpy())',
