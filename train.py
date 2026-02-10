@@ -226,7 +226,7 @@ def run_augmentation():
 
 
 def run_training():
-    """Run OpenWakeWord model training."""
+    """Run OpenWakeWord model training, capturing output for MLflow logging."""
     print("\n" + "=" * 60)
     print("Training model...")
     print("=" * 60)
@@ -234,12 +234,89 @@ def run_training():
     oww_dir = _find_oww_dir()
     train_script = str(oww_dir / "openwakeword" / "train.py")
     config_path = str((WORK_DIR / "training_config.yaml").resolve())
-    result = subprocess.run([
-        sys.executable, train_script,
-        "--training_config", config_path,
-        "--train_model"
-    ], cwd=str(oww_dir))
-    return result.returncode
+
+    # Run with real-time output capture for metric parsing
+    process = subprocess.Popen(
+        [sys.executable, "-u", train_script,
+         "--training_config", config_path,
+         "--train_model"],
+        cwd=str(oww_dir),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    step_count = 0
+    for line in process.stdout:
+        print(line, end="")  # Pass through to console
+
+        # Parse training metrics from upstream logging
+        if HAS_MLFLOW and mlflow.active_run():
+            _parse_and_log_metric(line, step_count)
+
+        # Track training sequences
+        if "Starting training sequence" in line:
+            step_count += 1
+            if HAS_MLFLOW and mlflow.active_run():
+                mlflow.log_metric("training_sequence", step_count)
+
+    process.wait()
+    return process.returncode
+
+
+# MLflow metric state for deduplication
+_mlflow_step_counters: dict[str, int] = {}
+
+
+def _parse_and_log_metric(line: str, sequence: int) -> None:
+    """Parse upstream openwakeword training log lines and log metrics to MLflow."""
+    import re
+
+    line = line.strip()
+
+    # Match patterns like: "val_accuracy: 0.95" or "false_positive_rate: 0.02"
+    # Upstream logs: "Best model ... has recall of X and false positive rate of Y"
+    best_match = re.search(
+        r"Best model.*recall of ([\d.]+).*false positive rate of ([\d.e+-]+)", line
+    )
+    if best_match:
+        step = _mlflow_step_counters.get("best_recall", 0)
+        mlflow.log_metric("best_recall", float(best_match.group(1)), step=step)
+        mlflow.log_metric("best_fp_rate", float(best_match.group(2)), step=step)
+        _mlflow_step_counters["best_recall"] = step + 1
+        return
+
+    # Match "Increasing weight on negative examples"
+    if "Increasing weight on negative" in line:
+        step = _mlflow_step_counters.get("neg_weight_increase", 0)
+        mlflow.log_metric("neg_weight_increased", 1, step=step)
+        _mlflow_step_counters["neg_weight_increase"] = step + 1
+        return
+
+    # Match tqdm-style progress with loss: "Step X/Y, loss=Z"
+    loss_match = re.search(r"loss[=:]\s*([\d.e+-]+)", line, re.IGNORECASE)
+    if loss_match:
+        step = _mlflow_step_counters.get("loss", 0)
+        try:
+            mlflow.log_metric("train_loss", float(loss_match.group(1)), step=step)
+            _mlflow_step_counters["loss"] = step + 1
+        except (ValueError, OverflowError):
+            pass
+        return
+
+    # Match validation metrics
+    for metric_name in ["val_accuracy", "val_recall", "train_recall", "train_accuracy"]:
+        pattern = rf"{metric_name}[=:]\s*([\d.e+-]+)"
+        m = re.search(pattern, line, re.IGNORECASE)
+        if m:
+            step = _mlflow_step_counters.get(metric_name, 0)
+            try:
+                mlflow.log_metric(metric_name, float(m.group(1)), step=step)
+                _mlflow_step_counters[metric_name] = step + 1
+            except (ValueError, OverflowError):
+                pass
+            return
 
 
 def main():
